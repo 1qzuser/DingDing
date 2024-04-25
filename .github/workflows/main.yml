@@ -1,9 +1,12 @@
 name: "Fund Data Checkin"
 
+
+
 on:
-  schedule:
-    - cron: "0 20,30 * * *"  # scheduled at 20:00 and 20:30 (UTC+8) everyday
   workflow_dispatch:
+  schedule:
+    - cron: "0 20,30 * * *"
+
 
 
 env:
