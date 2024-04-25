@@ -1,37 +1,34 @@
-import requests
+import http.client
+import json
 
-def checkin_with_push(Email, passwd, SCKEY):
-    url = "https://go.runba.cyou/auth/login"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36 Edg/109.0.1518.69'
-    }
-    data = {
-        "email": Email,
-        "passwd": passwd
-    }
-    resp = requests.post(url, headers=headers, data=data)
-    to_set_cookie = requests.utils.dict_from_cookiejar(resp.cookies)
-    if not (resp.status_code == 200 and resp.json().get('ret') == 1):
-        print("登录失败", resp.text)
-        exit(0)
+conn = http.client.HTTPSConnection("api.autostock.cn")
+payload = ''
+headers = {
+   'User-Agent': 'Apifox/1.0.0 (https://apifox.com)'
+}
+conn.request("GET", "/v1/fund?code=018978&code=004156", payload, headers)
+res = conn.getresponse()
+data = res.read()
+
+# 解析JSON数据
+response_data = json.loads(data.decode("utf-8"))
+
+# 提取基金名字和今日涨幅
+fund_names = []
+day_growth_values = []
+
+for fund in response_data.get("data", []):
+    fund_name = fund.get("name", "数据没更新")
+    day_growth = fund.get("dayGrowth", "数据没更新")
+    fund_names.append(fund_name)
+    day_growth_values.append(day_growth)
+
+# 打印基金名字和今日涨幅
+for i, fund_name in enumerate(fund_names):
+    day_growth = day_growth_values[i]
+    if day_growth == "0.00":
+        print(f"基金名称: {fund_name} 今日涨幅: {day_growth}% 说实话不如买余额宝")
+    elif day_growth.startswith("-"):  # 如果是负数，则表示亏损
+        print(f"基金名称: {fund_name} 今日涨幅: {day_growth}% 跌{float(day_growth[1:]) * 100}个🥚噶牢弟 ^^_")
     else:
-        print('用户==>', to_set_cookie.get('email'), '登录成功')
-    checkin_url = "https://go.runba.cyou/user/checkin"
-    resp2 = requests.post(checkin_url, headers=headers, cookies=to_set_cookie)
-    if resp2.status_code == 200:
-        if resp2.json().get("ret") == 1:
-            print("*" * 10 + "签到成功" + 10 * "*")
-            print("签到获得流量==>", resp2.json().get('msg'))
-            print("剩余流量==>", resp2.json().get('trafficInfo').get('unUsedTraffic'))
-            print("已经使用==>", resp2.json().get('trafficInfo').get('lastUsedTraffic'))
-            print("今日使用==>", resp2.json().get('trafficInfo').get('todayUsedTraffic'))
-            # 进行推送
-            if SCKEY != '':
-                push_url = 'https://sctapi.ftqq.com/{}.send?title=机场签到&desp={}'.format(SCKEY, resp2.json().get('msg'))
-                requests.post(url=push_url)
-                print('推送成功')
-        else:
-            print(resp2.json().get("msg"))
-    return resp2
-
-checkin_with_push('1366565528@qq.com', 'cyx2174324', 'SCT179362T7SSeEEZcUVRSyTxPTt6YiYtS')
+        print(f"基金名称: {fund_name} 今日涨幅: {day_growth}% 涨{float(day_growth) * 100}个🥚 爽！！！！ ")
