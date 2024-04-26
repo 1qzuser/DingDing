@@ -5,7 +5,7 @@ name: "Fund Data Checkin"
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 20 * * *"
+    - cron: "20 20 * * *"
 
 
 
