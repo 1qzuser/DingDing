@@ -1,10 +1,58 @@
 import requests
 from bs4 import BeautifulSoup
-import datetime
+from datetime import datetime, timedelta
 
 # 基金网站的URL
 fund_codes = ['018978', '004156']  # 添加需要查询的基金代码
 messages = []
+
+def get_latest_trading_day_data(data_rows, current_date):
+    """
+    Get the latest trading day's data from the data rows.
+
+    Args:
+    - data_rows (list): List of BeautifulSoup <tr> elements containing the data.
+    - current_date (str): The current date in 'm-d' format.
+
+    Returns:
+    - str: The message containing the latest trading day's data or a message indicating no data found.
+    """
+    # Initialize a dictionary to map month-day to the corresponding row
+    date_to_row = {row.find('td', class_='alignLeft').text.strip(): row for row in data_rows[1:] if row.find('td', class_='alignLeft')}
+
+    # Get today's date object
+    today = datetime.strptime(current_date, '%m-%d')
+
+    # Initialize the message
+    message = "数据未更新，且未找到昨天的数据。"
+
+    # Loop through the previous days until we find a trading day's data
+    for i in range(1, 10):  # Limiting the search to the last 10 days for practical purposes
+        # Calculate the date for the previous day
+        previous_day = today - timedelta(days=i)
+
+        # Format the previous day to 'm-d' format
+        previous_day_str = previous_day.strftime('%m-%d')
+
+        # Check if the previous day is a weekend and skip if it is
+        if previous_day.weekday() >= 5:  # 5 and 6 correspond to Saturday and Sunday
+            continue
+
+        # Check if the previous day's data exists
+        if previous_day_str in date_to_row:
+            # Get the row for the previous day
+            row = date_to_row[previous_day_str]
+
+            # Extract the rate from the row
+            rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
+            rate = rate_element.span.text.strip() if rate_element and rate_element.span else "数据未找到"
+
+            # Update the message
+            message = f"数据未更新，显示{previous_day_str}的数据：收益率: {rate}"
+            break
+
+    return message
+
 for fund_code in fund_codes:
     url = f'https://fund.eastmoney.com/{fund_code}.html?spm=search'
 
@@ -26,76 +74,31 @@ for fund_code in fund_codes:
         fund_name = title.split('(')[0].strip()
 
         # 输出基金名称部分和当前时间
-        current_time = datetime.datetime.now().strftime('%H:%M:%S')
+        current_time = datetime.now().strftime('%H:%M:%S')
         messages.append(f"基金名称: {fund_name} | 运行时间: {current_time}")
 
         # 找到包含时间和收益率的<tr>元素
         data_rows = soup.find_all('tr')
 
         # 获取当前日期
-        current_date = datetime.datetime.now().strftime('%m-%d')
+        current_date = datetime.now().strftime('%m-%d')
 
-        # 初始化最新数据的时间戳和收益率
-        latest_time = ""
-        latest_rate = ""
+        # 获取最近一个交易日的数据
+        message = get_latest_trading_day_data(data_rows, current_date)
+        messages.append(message)
 
-        # 遍历每个<tr>元素，跳过标题行
-        for row in data_rows[1:]:  # 跳过标题行
-            # 找到时间和收益率所在的<td>元素
-            time_element = row.find('td', class_='alignLeft')
-            rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
+# 加入钉钉推送：
+DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=68af6ef5d26f1338bf529e20b641c93b645b8034e3a5e69e4a00152c4010f8ac"
 
-            # 如果找到了时间和收益率元素，则提取并输出数据
-            if time_element and rate_element:
-                time = time_element.text.strip()  # 清除空白字符
-                rate = rate_element.span.text.strip()  # 获取收益率的文本
-
-                # 更新最新数据的时间戳和收益率
-                latest_time = time
-                latest_rate = rate
-
-                # 检查当前日期与最新数据日期是否一致
-                if time == current_date:
-                    messages.append(f"时间: {time}, 收益率: {rate}")
-                    break
-        else:
-            # 如果循环正常结束，说明没有找到当前日期的数据
-            # 计算前一天的日期
-            yesterday_date = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%m-%d')
-            # 遍历数据行，找到前一天的数据
-            for row in data_rows[1:]:  # 跳过标题行
-                time_element = row.find('td', class_='alignLeft')
-                if time_element and time_element.text.strip() == yesterday_date:
-                    rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
-                    if rate_element:
-                        messages.append(f"数据未更新，显示昨天的数据：时间: {yesterday_date}, 收益率: {rate_element.span.text.strip()}")
-                        break
-            else:
-                # 如果前一天的数据也没有找到，尝试找到更早的数据
-                for row in data_rows[1:]:  # 跳过标题行
-                    time_element = row.find('td', class_='alignLeft')
-                    if time_element and time_element.text.strip() == (datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%m-%d'):
-
-                        rate_element = row.find('td', class_='RelatedInfo alignRight10 bold')
-                        if rate_element:
-                            messages.append(
-                                f"数据未更新，显示更早的数据：时间: {time_element.text.strip()}, 收益率: {rate_element.span.text.strip()}")
-                            break
-                    else:
-                        messages.append("数据未更新，且未找到昨天的数据。")
-
-    # 加入钉钉推送：
-    DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/robot/send?access_token=68af6ef5d26f1338bf529e20b641c93b645b8034e3a5e69e4a00152c4010f8ac"
-
-    # 发送推送
-    if DINGTALK_WEBHOOK_URL:
-        # 构造钉钉消息
-        dingtalk_message = {
-            "msgtype": "text",
-            "text": {
-                "content": "\n\n".join(messages)
-            }
+# 发送推送
+if DINGTALK_WEBHOOK_URL:
+    # 构造钉钉消息
+    dingtalk_message = {
+        "msgtype": "text",
+        "text": {
+            "content": "\n\n".join(messages)
         }
-        # 发送消息
-        response = requests.post(url=DINGTALK_WEBHOOK_URL, json=dingtalk_message)
-        print(response.text)
+    }
+    # 发送消息
+    response = requests.post(url=DINGTALK_WEBHOOK_URL, json=dingtalk_message)
+    print(response.text)
